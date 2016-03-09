@@ -24,30 +24,23 @@
     (irc:quit *connection*)
     (setf *connection* nil)))
 
-(defparameter *safe-symbols* '(+ - * /))
-
-(defun expression-safep (expression)
-  (if (listp expression)
-      (if (member (car expression) *safe-symbols*)
-          t)
-      t))
-
 (defun message-handler (message)
   (let* ((arguments (irc:arguments message))
          (channel (first arguments))
          (contents (second arguments))
          (sender (irc:source message)))
     (ppcre:register-groups-bind
-     (expression-to-read) ("^\\|(.*)$" contents)
-     (when expression-to-read
-       (handler-case
-           (let ((user-expression (read-from-string expression-to-read)))
-             (when (expression-safep user-expression)
-               (let ((user-result (eval user-expression)))
-                 (irc:privmsg *connection* channel (format nil "~a" user-result)))))
-         (error (e) (format t "~%derp~%")))))))
+        (expression-to-read) ("^\\|(.*)$" contents)
+      (when expression-to-read
+        (handler-case
+            (let* ((user-expression (read-from-string expression-to-read))
+                   (user-lambda (eval `(lambda () ,@user-expression)))
+                   (user-result (funcall user-lambda)))
+              (irc:privmsg *connection* channel (format nil "~a" user-result)))
+          (error (e)
+            (irc:privmsg *connection* channel (format nil "~a~%" e))))))))
 
-(defun derpage ()
+(defun start ()
   (unless *connection*
     (setf *connection* (apply #'irc:connect (getf (getf *settings* :irc) :server))))
   (loop for channel in (getf (getf *settings* :irc) :channels) do
@@ -56,4 +49,4 @@
   (irc:add-hook *connection* 'irc:irc-privmsg-message (lambda (message) (message-handler message)))
   (irc:read-message-loop *connection*))
 
-(derpage)
+(start)
