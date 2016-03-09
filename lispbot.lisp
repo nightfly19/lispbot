@@ -1,4 +1,4 @@
-;;;#!/usr/bin/sbcl --script
+#!/usr/bin/sbcl --script
 
 #-quicklisp
 (let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
@@ -16,6 +16,8 @@
   (ql:quickload :cl-ppcre))
 
 (defvar *connection* nil)
+(defvar *settings* (with-open-file (in "settings.lisp")
+                     (with-standard-io-syntax (read in))))
 
 (defun part ()
   (when *connection*
@@ -36,18 +38,22 @@
          (contents (second arguments))
          (sender (irc:source message)))
     (ppcre:register-groups-bind
-        (expression-to-read) ("^\\|(.*)$" contents)
-      (when expression-to-read
-        (handler-case
-            (let ((user-expression (read-from-string expression-to-read)))
-              (when (expression-safep user-expression)
-                (let ((user-result (eval user-expression)))
-                  (irc:privmsg *connection* channel (format nil "~a" user-result)))))
-                (error (e) (format t "~%derp~%")))))))
+     (expression-to-read) ("^\\|(.*)$" contents)
+     (when expression-to-read
+       (handler-case
+           (let ((user-expression (read-from-string expression-to-read)))
+             (when (expression-safep user-expression)
+               (let ((user-result (eval user-expression)))
+                 (irc:privmsg *connection* channel (format nil "~a" user-result)))))
+         (error (e) (format t "~%derp~%")))))))
 
 (defun derpage ()
   (unless *connection*
-    (setf *connection* (irc:connect :nickname "lispbot-also" :server "irc.cat.pdx.edu" :port 6697 :connection-security :ssl)))
-  (irc:join *connection* "#bots" :password (getf (with-open-file (in "auth.dat") (with-standard-io-syntax (read in))) :key))
+    (setf *connection* (apply #'irc:connect (getf (getf *settings* :irc) :server))))
+  (loop for channel in (getf (getf *settings* :irc) :channels) do
+       (format t "~a~%" channel)
+       (apply #'irc:join (cons *connection* channel)))
   (irc:add-hook *connection* 'irc:irc-privmsg-message (lambda (message) (message-handler message)))
   (irc:read-message-loop *connection*))
+
+(derpage)

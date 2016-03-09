@@ -2,4 +2,4 @@
 *.fasl
 *.lisp-temp
 
-auth.dat
+settings.lisp

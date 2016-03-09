@@ -1,0 +1,2 @@
+(:irc (:server (:nickname "lispbot" :server "example.com" :port 6697 :connection-security :ssl)
+               :channels (("#lisp" :password "whatever, man"))))
