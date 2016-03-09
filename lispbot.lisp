@@ -19,26 +19,48 @@
 (defvar *settings* (with-open-file (in "settings.lisp")
                      (with-standard-io-syntax (read in))))
 
-(defun part ()
+(defparameter *channel* nil)
+(defparameter *sender* nil)
+(defparameter *message* nil)
+
+(defun part (channel &optional reason)
   (when *connection*
-    (irc:quit *connection*)
-    (setf *connection* nil)))
+    (if reason
+        (irc:part *connection* channel reason)
+        (irc:part *connection* channel))))
+
+(defun join (channel &optional key)
+  (when *connection*
+    (if key
+        (irc:join *connection* channel :password key)
+        (irc:join *connection* channel))))
+
+(defgeneric command-handler (command &rest args))
+
+(defmethod command-handler (command &rest args)
+  (irc:privmsg *connection* *channel* (format nil "~a~%" command)))
+
+(defmethod command-handler ((command list) &rest args)
+  (let* ((user-lambda (eval `(lambda () ,command)))
+         (result (funcall user-lambda)))
+    (irc:privmsg *connection* *channel* (format nil "~a~%" result))))
+
+(defmethod command-handler ((command (eql 'help)) &rest args)
+  (irc:privmsg *connection* *channel* (format nil "I do lisp things")))
 
 (defun message-handler (message)
   (let* ((arguments (irc:arguments message))
-         (channel (first arguments))
-         (contents (second arguments))
-         (sender (irc:source message)))
+         (*channel* (first arguments))
+         (*message* (second arguments))
+         (*sender* (irc:source message)))
     (ppcre:register-groups-bind
-        (expression-to-read) ("^\\|(.*)$" contents)
+        (expression-to-read) ("^\\|(.*)$" *message*)
       (when expression-to-read
         (handler-case
-            (let* ((user-expression (read-from-string expression-to-read))
-                   (user-lambda (eval `(lambda () ,@user-expression)))
-                   (user-result (funcall user-lambda)))
-              (irc:privmsg *connection* channel (format nil "~a" user-result)))
+            (let ((user-expression (read-from-string (format nil "(~a)" expression-to-read))))
+              (apply #'command-handler user-expression))
           (error (e)
-            (irc:privmsg *connection* channel (format nil "~a~%" e))))))))
+            (irc:privmsg *connection* *channel* (format nil "ERROR: ~a~%" e))))))))
 
 (defun start ()
   (unless *connection*
@@ -46,7 +68,7 @@
   (loop for channel in (getf (getf *settings* :irc) :channels) do
        (format t "~a~%" channel)
        (apply #'irc:join (cons *connection* channel)))
-  (irc:add-hook *connection* 'irc:irc-privmsg-message (lambda (message) (message-handler message)))
+  (irc:add-hook *connection* 'irc:irc-privmsg-message #'message-handler)
   (irc:read-message-loop *connection*))
 
 (start)
