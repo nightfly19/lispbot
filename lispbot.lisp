@@ -57,7 +57,10 @@
       (irc:privmsg *connection* *channel* (format nil "~a~%" result)))))
 
 (defmethod command ((command (eql 'help)) &rest args)
-  (irc:privmsg *connection* *channel* (format nil "I do lisp things")))
+  (irc:privmsg *connection* *channel* "I do lisp things"))
+
+(defmethod command ((command (eql 'source)) &rest args)
+  (irc:privmsg *connection* *channel* "https://github.com/nightfly19/lispbot"))
 
 (defun message-handler (message)
   (let* ((arguments (irc:arguments message))
