@@ -22,6 +22,7 @@
 (defparameter *channel* nil)
 (defparameter *sender* nil)
 (defparameter *message* nil)
+(defparameter *silently* nil)
 
 (defun part (channel &optional reason)
   (when *connection*
@@ -35,17 +36,27 @@
         (irc:join *connection* channel :password key)
         (irc:join *connection* channel))))
 
-(defgeneric command-handler (command &rest args))
+(defun say (channel message)
+  (irc:privmsg *connection* channel (format nil "~a~%" message)))
 
-(defmethod command-handler (command &rest args)
+(defmacro silently (&body body)
+  `(progn
+     (setf *silently* t)
+     ,@body))
+
+(defgeneric command (command &rest args))
+
+(defmethod command (command &rest args)
   (irc:privmsg *connection* *channel* (format nil "~a~%" command)))
 
-(defmethod command-handler ((command list) &rest args)
+(defmethod command ((command list) &rest args)
   (let* ((user-lambda (eval `(lambda () ,command)))
+         *silently*
          (result (funcall user-lambda)))
-    (irc:privmsg *connection* *channel* (format nil "~a~%" result))))
+    (when (not *silently*)
+      (irc:privmsg *connection* *channel* (format nil "~a~%" result)))))
 
-(defmethod command-handler ((command (eql 'help)) &rest args)
+(defmethod command ((command (eql 'help)) &rest args)
   (irc:privmsg *connection* *channel* (format nil "I do lisp things")))
 
 (defun message-handler (message)
@@ -58,7 +69,7 @@
       (when expression-to-read
         (handler-case
             (let ((user-expression (read-from-string (format nil "(~a)" expression-to-read))))
-              (apply #'command-handler user-expression))
+              (apply #'command user-expression))
           (error (e)
             (irc:privmsg *connection* *channel* (format nil "ERROR: ~a~%" e))))))))
 
@@ -71,4 +82,4 @@
   (irc:add-hook *connection* 'irc:irc-privmsg-message #'message-handler)
   (irc:read-message-loop *connection*))
 
-(start)
+(sb-ext:save-lisp-and-die "lispbot" :executable t :toplevel #'start)
